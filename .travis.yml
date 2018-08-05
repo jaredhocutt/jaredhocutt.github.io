@@ -1,0 +1,35 @@
+branches:
+  only:
+    - dev
+
+dist: trusty
+sudo: false
+
+addons:
+  apt:
+    packages:
+      - wget
+
+install:
+  - mkdir hugo
+  - cd hugo
+  - wget https://github.com/gohugoio/hugo/releases/download/v0.45.1/hugo_0.45.1_Linux-64bit.tar.gz
+  - tar xf ./hugo_0.45.1_Linux-64bit.tar.gz
+  - rm ./hugo_0.45.1_Linux-64bit.tar.gz
+  - cd ..
+
+before_script:
+  - export PATH=$(pwd)/hugo:$PATH
+
+script:
+  - ./build.sh
+
+deploy:
+  provider: pages
+  local-dir: public
+  skip-cleanup: true
+  github-token: $GITHUB_TOKEN
+  target-branch: master
+  verbose: true
+  on:
+    branch: dev

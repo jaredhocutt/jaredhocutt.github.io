@@ -1,0 +1,23 @@
+baseURL = "http://jaredhocutt.com/"
+languageCode = "en-us"
+title = "Jared Hocutt"
+theme = "massively"
+canonifyURLs = false
+
+# googleanalytics = "UA-113904582-3"
+# disqusShortname = "hugo-massively"
+
+[blackfriday]
+  smartypants = false
+
+[params]
+  favicon = "favicon.ico"
+
+[params.posts]
+    foldername = "posts"
+    pagesize = "12"
+    featuredpost = "false"
+
+[languages]
+[languages.en]
+  languageName = "English"
