@@ -1,0 +1,267 @@
+<!DOCTYPE HTML>
+
+<html lang='en'>
+	<head>
+		<title>Subdomains on localhost using Apache / XAMPP &middot; Jared Hocutt</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+		<link rel="stylesheet" href='/assets/css/main.css' />
+		
+		<link rel="shortcut icon" href="favicon.ico">
+		
+		<noscript><link rel="stylesheet" href='/assets/css/noscript.css' /></noscript>
+	</head>
+
+	<body lang='en' class="is-loading">
+
+		
+			<div id="wrapper">
+
+                
+<header id="header">
+    <a href='/' class="logo">Jared Hocutt</a>
+</header>
+
+                
+
+<nav id="nav">
+    <ul class="links">
+        <li class="active"><a href='/'>Jared Hocutt</a></li>
+        
+        <li><a href='/#footer'>Contact</a></li>
+        
+        
+    </ul>
+    
+    <ul class="icons">
+        
+        <li><a href="https://twitter.com/jaredhocutt" class="icon fa-twitter"><span class="label">Twitter</span></a></li>
+        
+        
+        
+        <li><a href="https://www.instagram.com/jaredhocutt/" class="icon fa-instagram"><span class="label">Instagram</span></a></li>
+        
+        
+        <li><a href="https://www.linkedin.com/in/jaredhocutt/" class="icon fa-linkedin"><span class="label">LinkedIn</span></a></li>
+        
+        
+        <li><a href="https://github.com/jaredhocutt" class="icon fa-github"><span class="label">GitHub</span></a></li>
+        
+        
+        
+        
+        
+    </ul>
+    
+</nav>
+
+
+				
+					<div id="main">
+
+						
+                        <section class="post">
+                            <header class="major">
+                                
+                                <span class="date">October 5, 2010</span>
+                                
+                                <h1>Subdomains on localhost using Apache / XAMPP</h1>
+                                <p></p>
+                            </header>
+                            
+                            <div class="image main"><img src="/images/b-subdomains-on-localhost-using-apache-xampp.png" alt="" /></div>
+                            
+                            
+
+<p>When I'm working on a new project, I often find myself wanting to setup a
+subdomain (e.g. <a href="http://myproject.dev">http://myproject.dev</a>) in my local environment to use while
+doing development. If you're using XAMPP (or standalone Apache), this is
+actually a pretty easy thing to do.</p>
+
+<p>These instructions should work in both Windows and Linux environments. I'll
+attempt to make notes where things differ.</p>
+
+<h2 id="step-1">Step 1</h2>
+
+<p>Setting up subdomains requires using a <code>VirtualHost</code> in Apache. The file to
+edit is <code>httpd-vhosts.conf</code>.</p>
+
+<ul>
+<li>On Linux, this file should be located at <code>/opt/lampp/etc/extra/httpd-vhosts.conf</code></li>
+<li>On Windows, this file should be located at <code>C:\xampp\apache\conf\extra\httpd-vhosts.conf</code></li>
+</ul>
+
+<p>There are two edits to make in <code>httpd-vhosts.conf</code>. The first edit to make is
+to let Apache know that we want to use <code>VirtualHost</code>s. To do this uncomment
+(or add) the following line:</p>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-apache" data-lang="apache">NameVirtualHost *:80</code></pre></div>
+
+<p>The second edit is to actually create our <code>VirtualHost</code>. To do this, add the
+following to the end of <code>httpd-vhosts.conf</code>.</p>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-apache" data-lang="apache"><span style="color:#f92672">&lt;VirtualHost</span> <span style="color:#e6db74">*:80</span><span style="color:#f92672">&gt;</span>
+    ServerName localhost
+
+    DocumentRoot <span style="color:#e6db74">&#34;/opt/lampp/htdocs&#34;</span>
+    DirectoryIndex index.php index.html
+
+    <span style="color:#f92672">&lt;Directory</span> <span style="color:#e6db74">&#34;/opt/lampp/htdocs&#34;</span><span style="color:#f92672">&gt;</span>
+        Options Indexes FollowSymLinks Includes ExecCGI
+        AllowOverride <span style="color:#66d9ef">All</span>
+        Order allow,deny
+        Allow from <span style="color:#66d9ef">all</span>
+    <span style="color:#f92672">&lt;/Directory&gt;</span>
+<span style="color:#f92672">&lt;/VirtualHost&gt;</span>
+
+<span style="color:#f92672">&lt;VirtualHost</span> <span style="color:#e6db74">*:80</span><span style="color:#f92672">&gt;</span>
+    ServerName myproject.dev
+
+    DocumentRoot <span style="color:#e6db74">&#34;/path/to/your/files&#34;</span>
+    DirectoryIndex index.php index.html
+
+    <span style="color:#f92672">&lt;Directory</span> <span style="color:#e6db74">&#34;/path/to/your/files&#34;</span><span style="color:#f92672">&gt;</span>
+        Options Indexes FollowSymLinks Includes ExecCGI
+        AllowOverride <span style="color:#66d9ef">All</span>
+        Order allow,deny
+        Allow from <span style="color:#66d9ef">all</span>
+    <span style="color:#f92672">&lt;/Directory&gt;</span>
+<span style="color:#f92672">&lt;/VirtualHost&gt;</span></code></pre></div>
+
+<p>Note: The paths above are Unix paths. If you're using Windows,
+<code>/opt/lampp/htdocs</code> should be <code>C:/xampp/htdocs</code> and <code>/path/to/your/files</code>
+should be a Windows path with the exception that you should use forward slashes
+instead of back slashes.</p>
+
+<p>As you can see here, we've created two <code>VirtualHost</code>s. The first one is setup
+so that going to <a href="http://localhost">http://localhost</a> in your browser, continues to work as it
+always has with XAMPP. The second one is our new subodmain. The important bits
+to edit in the second one are as follows:</p>
+
+<ul>
+<li><code>ServerName</code>: set this to the subdomain you want to access it by (in the
+example, you would go to <a href="http://myproject.dev)">http://myproject.dev)</a>.</li>
+<li><code>DocumentRoot</code>: set this to where the files you want to serve are located.</li>
+<li><code>Directory</code>: set this path to match the <code>DirectoryRoot</code>.</li>
+</ul>
+
+<h2 id="step-2">Step 2</h2>
+
+<p>Next, we need to tell Apache to pay attention to what we have put in the
+<code>httpd-vhosts.conf</code> file. XAMPP used to include this file by default, but newer
+versions do not. The file we need to edit in order to do this is <code>httpd.conf</code>.</p>
+
+<ul>
+<li>On Linux, this file should be located at <code>/opt/lampp/etc/httpd.conf</code></li>
+<li>On Windows, this file should be located at <code>C:/xampp/apache/conf/httpd.conf</code></li>
+</ul>
+
+<p>Near the bottom of the file, uncomment the line <code>Include etc/extra/httpd-vhosts.conf</code>.</p>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-apache" data-lang="apache"><span style="color:#75715e"># Virtual hosts</span>
+Include etc/extra/httpd-vhosts.conf</code></pre></div>
+
+<h2 id="step-3">Step 3</h2>
+
+<p>Lastly, we need to tell our computer that when visiting <a href="http://myproject.dev">http://myproject.dev</a>
+(or whatever subdomain you setup in Step 1). This is done via the hosts file.</p>
+
+<ul>
+<li>On Linux, this file should be located at <code>/etc/hosts</code></li>
+<li>On Windows, this file should be located at <code>C:/Windows/System32/drivers/etc/hosts</code></li>
+</ul>
+
+<p>Edit the hosts file and add the following:</p>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-text" data-lang="text">127.0.0.1    myproject.dev</code></pre></div>
+
+<h2 id="and-we-re-done">And we're done!</h2>
+
+<p>That's it! Restart XAMPP (Apache) and go to <a href="http://myproject.dev">http://myproject.dev</a> in your
+browser to see your files. To add more subdomains in the future, just add a
+<code>VirtualHost</code> in <code>httpd-vhosts.conf</code> and add the subdomain to your <code>hosts</code> file.</p>
+
+
+                            
+                            
+                            
+                            
+                            
+                        </section>
+
+					</div>
+
+                    
+
+<footer id="footer">
+    
+    <section>
+        <form method="post" action="https://formspree.io/contact@jaredhocutt.com">
+            <div class="field">
+                <label for="name">Name</label>
+                <input type="text" name="name" id="name" />
+            </div>
+            <div class="field">
+                <label for="email">Email</label>
+                <input type="text" name="email" id="email" />
+            </div>
+            <div class="field">
+                <label for="message">Message</label>
+                <textarea name="message" id="message" rows="3"></textarea>
+            </div>
+            <ul class="actions">
+                <li><input type="submit" value='Send A Message' /></li>
+            </ul>
+        </form>
+    </section>
+    
+    <section class="split contact">
+        
+        
+        
+        
+        <section>
+            <h3>Social</h3>
+            <ul class="icons alt">
+                
+                <li><a href="https://twitter.com/jaredhocutt" class="icon alt fa-twitter"><span class="label">Twitter</span></a></li>
+                
+                
+                
+                <li><a href="https://www.instagram.com/jaredhocutt/" class="icon alt fa-instagram"><span class="label">Instagram</span></a></li>
+                
+                
+                <li><a href="https://www.linkedin.com/in/jaredhocutt/" class="icon alt fa-linkedin"><span class="label">LinkedIn</span></a></li>
+                
+                
+                <li><a href="https://github.com/jaredhocutt" class="icon alt fa-github"><span class="label">GitHub</span></a></li>
+                
+                
+                
+                
+                
+            </ul>
+        </section>
+        
+    </section>
+</footer>
+
+                    
+<div id="copyright">
+    <ul><li>&copy; Jared Hocutt</li><li>Design: <a href="https://html5up.net">HTML5 UP</a></li><li>Hugo Port: <a href="https://curtistimson.co.uk">curttimson</a></li></ul>
+</div>
+
+
+            </div>
+            
+            
+<script src='/assets/js/jquery.min.js'></script>
+<script src='/assets/js/jquery.scrollex.min.js'></script>
+<script src='/assets/js/jquery.scrolly.min.js'></script>
+<script src='/assets/js/skel.min.js'></script>
+<script src='/assets/js/util.js'></script>
+<script src='/assets/js/main.js'></script>
+
+
+	</body>
+</html>

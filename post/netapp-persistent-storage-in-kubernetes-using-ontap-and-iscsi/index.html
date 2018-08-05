@@ -1,0 +1,399 @@
+<!DOCTYPE HTML>
+
+<html lang='en'>
+	<head>
+		<title>NetApp Persistent Storage in Kubernetes: Using ONTAP and iSCSI &middot; Jared Hocutt</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+		<link rel="stylesheet" href='/assets/css/main.css' />
+		
+		<link rel="shortcut icon" href="favicon.ico">
+		
+		<noscript><link rel="stylesheet" href='/assets/css/noscript.css' /></noscript>
+	</head>
+
+	<body lang='en' class="is-loading">
+
+		
+			<div id="wrapper">
+
+                
+<header id="header">
+    <a href='/' class="logo">Jared Hocutt</a>
+</header>
+
+                
+
+<nav id="nav">
+    <ul class="links">
+        <li class="active"><a href='/'>Jared Hocutt</a></li>
+        
+        <li><a href='/#footer'>Contact</a></li>
+        
+        
+    </ul>
+    
+    <ul class="icons">
+        
+        <li><a href="https://twitter.com/jaredhocutt" class="icon fa-twitter"><span class="label">Twitter</span></a></li>
+        
+        
+        
+        <li><a href="https://www.instagram.com/jaredhocutt/" class="icon fa-instagram"><span class="label">Instagram</span></a></li>
+        
+        
+        <li><a href="https://www.linkedin.com/in/jaredhocutt/" class="icon fa-linkedin"><span class="label">LinkedIn</span></a></li>
+        
+        
+        <li><a href="https://github.com/jaredhocutt" class="icon fa-github"><span class="label">GitHub</span></a></li>
+        
+        
+        
+        
+        
+    </ul>
+    
+</nav>
+
+
+				
+					<div id="main">
+
+						
+                        <section class="post">
+                            <header class="major">
+                                
+                                <span class="date">April 13, 2016</span>
+                                
+                                <h1>NetApp Persistent Storage in Kubernetes: Using ONTAP and iSCSI</h1>
+                                <p></p>
+                            </header>
+                            
+                            <div class="image main"><img src="/images/b-netapp-persistent-storage-in-kubernetes-using-ontap.jpg" alt="" /></div>
+                            
+                            <blockquote>
+<p>This post is part of a multi-part series on how to use NetApp storage
+platforms to present persistent volumes in Kubernetes. The other posts in this series
+are:</p>
+
+<ul>
+<li><a href="/post/netapp-persistent-storage-in-kubernetes-using-ontap-and-nfs/">Part 1: Using ONTAP and NFS</a></li>
+<li><a href="/post/netapp-persistent-storage-in-kubernetes-using-ontap-and-iscsi/">Part 2: Using ONTAP and iSCSI</a></li>
+</ul>
+</blockquote>
+
+<p>The Kubernetes <code>PersistentVolume</code> API provides several plugins for integrating
+your storage into Kubernetes for containers to consume. In this post, we'll
+focus on how to use the <strong>iSCSI</strong> plugin with ONTAP.</p>
+
+<p></p>
+
+<h2 id="environment">Environment</h2>
+
+<h3 id="ontap">ONTAP</h3>
+
+<p>For this post, a single node clustered Data ONTAP 8.3 simulator was used. The
+setup and commands used are no different than what would be used in a production
+setup using real hardware.</p>
+
+<h3 id="kubernetes">Kubernetes</h3>
+
+<p>In this setup, Kubernetes 1.2.2 was used in a single master and single node setup
+running on VirtualBox using Vagrant. For tutorials on how to run Kubernetes in
+nearly any configuration and on any platform you can imagine, check out the
+<a href="http://kubernetes.io/docs/getting-started-guides/">Kubernetes Getting Started guides</a>.</p>
+
+<h2 id="setup">Setup</h2>
+
+<h3 id="ontap-1">ONTAP</h3>
+
+<p>The setup for ONTAP consists of the following steps.</p>
+
+<ol>
+<li>Create a Storage Virtual Machine (SVM) to host your iSCSI volumes</li>
+<li>Enable iSCSI for the SVM created</li>
+<li>Create a data LIF for Kubernetes to use</li>
+<li>Create an initiator group</li>
+<li>Add the Kubernetes host(s) to the initiator group</li>
+<li>Create a volume for iSCSI LUNs</li>
+<li>Create an iSCSI LUN for Kubernetes to use</li>
+<li>Map the iSCSI LUN to the initiator group</li>
+</ol>
+
+<p>Of course you can skip some of these steps if you already have what you need there.</p>
+
+<p>Here is an example that follows these steps:</p>
+
+<p><strong>Create a Storage Virtual Machine (SVM) to host your iSCSI volumes</strong></p>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">VSIM::&gt; vserver create -vserver svm_kube_iscsi -subtype default -rootvolume svm_kube_iscsi_root -aggregate aggr1 -rootvolume-security-style unix -language C.UTF-8 -snapshot-policy default
+
+VSIM::&gt; vserver modify -vserver svm_kube_iscsi -aggr-list aggr1</code></pre></div>
+
+<p><strong>Enable iSCSI for the SVM created</strong></p>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">VSIM::&gt; vserver iscsi create -vserver svm_kube_iscsi</code></pre></div>
+
+<p><strong>Create a data LIF for Kubernetes to use</strong></p>
+
+<p>The values specified in this example is specific to our ONTAP simulator. Update
+the appropriate values to match your environment.</p>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">VSIM::&gt; network interface create -vserver svm_kube_iscsi -lif iscsi_data -role data -data-protocol iscsi -home-node VSIM-01 -home-port e0c -address <span style="color:#ae81ff">10</span>.0.207.20 -netmask <span style="color:#ae81ff">255</span>.255.255.0</code></pre></div>
+
+<p><strong>Create an initiator group</strong></p>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">VSIM::&gt; igroup create -igroup igroup_kube -protocol iscsi -ostype linux</code></pre></div>
+
+<p><strong>Add the Kubernetes host(s) to the initiator group</strong></p>
+
+<p>For each node in our Kubernetes cluster, we need to add it's <code>InitiatorName</code> to
+the <code>igroup</code>. The initiator name can be found in the file
+<code>/etc/iscsi/initiatorname.iscsi</code>. If this file does not exist, it's likely that
+the iSCSI utilities have not been installed. See the
+<a href="#setup_kubernetes">Kubernetes setup</a> section for how to do this.</p>
+
+<p>In our setup, the <code>InitiatorName</code> is <code>iqn.1994-05.com.redhat:27cc6d4e6da</code>. Update
+the appropriate values to match your environment.</p>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">VSIM:&gt;&gt; igroup add -igroup igroup_kube -initiator iqn.1994-05.com.redhat:27cc6d4e6da</code></pre></div>
+
+<p><strong>Create a volume for iSCSI LUNs</strong></p>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">VSIM::&gt; volume create -volume vol_kube_iscsi -vserver svm_kube_iscsi -aggregate aggr1 -size 10GB</code></pre></div>
+
+<p><strong>Create an iSCSI LUN for Kubernetes to use</strong></p>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">VSIM::&gt; lun create -path /vol/vol_kube_iscsi/lun_kube_0001 -size 1GB -ostype linux</code></pre></div>
+
+<p><strong>Map the iSCSI LUN to the initiator group</strong></p>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">VSIM:&gt;&gt; lun map -path /vol/vol_kube_iscsi/lun_kube_0001 -igroup igroup_kube</code></pre></div>
+
+<p>Now that you have an iSCSI LUN to use in Kubernetes, we need to get the IQN of
+our SVM because we'll need it in the later steps when using the storage in
+Kubernetes.</p>
+
+<p>Run the following command and take note of the <strong>Target Name</strong>. In our example
+below, that value is <code>iqn.1992-08.com.netapp:sn.7dcf3853018611e6a3590800278b2267:vs.2</code>.</p>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">VSIM::&gt; iscsi show -vserver svm_kube_iscsi
+
+                 Vserver: svm_kube_iscsi
+             Target Name: iqn.1992-08.com.netapp:sn.7dcf3853018611e6a3590800278b2267:vs.2
+            Target Alias: svm_kube_iscsi
+   Administrative Status: up</code></pre></div>
+
+<h3 id="kubernetes-a-name-setup-kubernetes-a">Kubernetes <a name="setup_kubernetes"></a></h3>
+
+<p>To start, we need to install the needed iSCSI utilities on our Kubernetes nodes.</p>
+
+<p>In our setup, the Vagrant box is using Fedora 23. The package to install
+is <code>iscsi-initiator-utils</code>. Install the appropriate package for the OS running
+on your Kubernetes nodes.</p>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">$ dnf install -y iscsi-initiator-utils</code></pre></div>
+
+<p>In our example, we do not setup any authentication for the iSCSI LUN we created,
+but if we had, we would need to also edit <code>/etc/iscsi/iscsid.conf</code> to match
+the configuration.</p>
+
+<p>Next, we need to let Kubernetes know about our iSCSI LUN. To do this, we will
+create a <code>PersistentVolume</code> and a <code>PersistentVolumeClaim</code>.</p>
+
+<p>Create a <code>PersistentVolume</code> definition and save it as <code>iscsi-pv.yaml</code>.</p>
+
+<p><strong>iscsi-pv.yaml</strong></p>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-yaml" data-lang="yaml">apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: kube_iscsi_0001
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  iscsi:
+    targetPortal: <span style="color:#e6db74">&#34;10.0.207.20:3260&#34;</span>  <span style="color:#75715e"># set this to your data LIF IP address</span>
+    iqn: <span style="color:#e6db74">&#34;iqn.1992-08.com.netapp:sn.7dcf3853018611e6a3590800278b2267:vs.2&#34;</span>
+    lun: <span style="color:#ae81ff">0</span>
+    fsType: <span style="color:#e6db74">&#34;ext4&#34;</span>
+    readOnly: <span style="color:#66d9ef">false</span></code></pre></div>
+
+<p>Then create a <code>PersistentVolumeClaim</code> that uses the <code>PersistentVolume</code> and save
+it as <code>iscsi-pvc.yaml</code>.</p>
+
+<p><strong>iscsi-pvc.yaml</strong></p>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-yaml" data-lang="yaml">kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: iscsi-claim1
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi</code></pre></div>
+
+<p>Now that we have a <code>PersistentVolume</code> definition and a <code>PersistentVolumeClaim</code>
+definition, we need to create them in Kubernetes.</p>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">$ kubectl create -f iscsi-pv.yaml
+$ kubectl create -f iscsi-pvc.yaml</code></pre></div>
+
+<p>At this point, we can spin up a container that uses the <code>PersistentVolumeClaim</code>
+we just created.</p>
+
+<p>First, we'll setup a pod that we can use to write to an <code>output.txt</code> file
+the current time and hostname of the pod.</p>
+
+<p>Save the pod definition as <code>iscsi-busybox.yaml</code>.</p>
+
+<p><strong>iscsi-busybox.yaml</strong></p>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-yaml" data-lang="yaml">apiVersion: v1
+kind: Pod
+metadata:
+  name: iscsi-busybox
+spec:
+  containers:
+  - image: busybox
+    command:
+      - sh
+      - -c
+      - <span style="color:#e6db74">&#39;tail -f /dev/null&#39;</span>
+    imagePullPolicy: IfNotPresent
+    name: busybox
+    volumeMounts:
+      <span style="color:#75715e"># name must match the volume name below</span>
+      - name: nfs-claim1
+        mountPath: <span style="color:#e6db74">&#34;/mnt&#34;</span>
+  volumes:
+  - name: nfs-claim1
+    persistentVolumeClaim:
+      claimName: nfs-claim1</code></pre></div>
+
+<p>Create the pod in Kubernetes.</p>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">$ kubectl create -f iscsi-busybox.yaml</code></pre></div>
+
+<p>Now that we've created our pod with the iSCSI volume attached, we can write
+data to the volume to verify that everything is working as expected.</p>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">$ kubectl get pods
+NAME            READY     STATUS    RESTARTS   AGE
+iscsi-busybox   <span style="color:#ae81ff">1</span>/1       Running   <span style="color:#ae81ff">0</span>          34s
+
+$ kubectl exec iscsi-busybox -- sh -c <span style="color:#e6db74">&#39;date &gt; /mnt/output.txt&#39;</span>
+
+$ kubectl exec iscsi-busybox -- cat /mnt/output.txt
+Mon Apr <span style="color:#ae81ff">18</span> <span style="color:#ae81ff">16</span>:59:55 UTC <span style="color:#ae81ff">2016</span></code></pre></div>
+
+<p>As can be seen, we have output the current date and time to <code>output.txt</code>. Next,
+we'll stop this instance of the pod and create a new one and verify that our
+data is still there.</p>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">$ kubectl get pods
+NAME            READY     STATUS    RESTARTS   AGE
+iscsi-busybox   <span style="color:#ae81ff">1</span>/1       Running   <span style="color:#ae81ff">0</span>          8m
+
+$ kubectl delete -f iscsi-busybox.yaml
+pod <span style="color:#e6db74">&#34;iscsi-busybox&#34;</span> deleted
+
+$ kubectl get pods
+
+$ kubectl create -f iscsi-busybox.yaml
+pod <span style="color:#e6db74">&#34;iscsi-busybox&#34;</span> created
+
+$ kubectl get pods
+NAME            READY     STATUS    RESTARTS   AGE
+iscsi-busybox   <span style="color:#ae81ff">1</span>/1       Running   <span style="color:#ae81ff">0</span>          31s
+
+$ kubectl exec iscsi-busybox -- cat /mnt/output.txt
+Mon Apr <span style="color:#ae81ff">18</span> <span style="color:#ae81ff">16</span>:59:55 UTC <span style="color:#ae81ff">2016</span></code></pre></div>
+
+                            
+                            
+                            
+                            
+                            
+                        </section>
+
+					</div>
+
+                    
+
+<footer id="footer">
+    
+    <section>
+        <form method="post" action="https://formspree.io/contact@jaredhocutt.com">
+            <div class="field">
+                <label for="name">Name</label>
+                <input type="text" name="name" id="name" />
+            </div>
+            <div class="field">
+                <label for="email">Email</label>
+                <input type="text" name="email" id="email" />
+            </div>
+            <div class="field">
+                <label for="message">Message</label>
+                <textarea name="message" id="message" rows="3"></textarea>
+            </div>
+            <ul class="actions">
+                <li><input type="submit" value='Send A Message' /></li>
+            </ul>
+        </form>
+    </section>
+    
+    <section class="split contact">
+        
+        
+        
+        
+        <section>
+            <h3>Social</h3>
+            <ul class="icons alt">
+                
+                <li><a href="https://twitter.com/jaredhocutt" class="icon alt fa-twitter"><span class="label">Twitter</span></a></li>
+                
+                
+                
+                <li><a href="https://www.instagram.com/jaredhocutt/" class="icon alt fa-instagram"><span class="label">Instagram</span></a></li>
+                
+                
+                <li><a href="https://www.linkedin.com/in/jaredhocutt/" class="icon alt fa-linkedin"><span class="label">LinkedIn</span></a></li>
+                
+                
+                <li><a href="https://github.com/jaredhocutt" class="icon alt fa-github"><span class="label">GitHub</span></a></li>
+                
+                
+                
+                
+                
+            </ul>
+        </section>
+        
+    </section>
+</footer>
+
+                    
+<div id="copyright">
+    <ul><li>&copy; Jared Hocutt</li><li>Design: <a href="https://html5up.net">HTML5 UP</a></li><li>Hugo Port: <a href="https://curtistimson.co.uk">curttimson</a></li></ul>
+</div>
+
+
+            </div>
+            
+            
+<script src='/assets/js/jquery.min.js'></script>
+<script src='/assets/js/jquery.scrollex.min.js'></script>
+<script src='/assets/js/jquery.scrolly.min.js'></script>
+<script src='/assets/js/skel.min.js'></script>
+<script src='/assets/js/util.js'></script>
+<script src='/assets/js/main.js'></script>
+
+
+	</body>
+</html>

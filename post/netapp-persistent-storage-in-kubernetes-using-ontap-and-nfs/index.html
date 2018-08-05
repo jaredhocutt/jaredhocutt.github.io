@@ -1,0 +1,421 @@
+<!DOCTYPE HTML>
+
+<html lang='en'>
+	<head>
+		<title>NetApp Persistent Storage in Kubernetes: Using ONTAP and NFS &middot; Jared Hocutt</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+		<link rel="stylesheet" href='/assets/css/main.css' />
+		
+		<link rel="shortcut icon" href="favicon.ico">
+		
+		<noscript><link rel="stylesheet" href='/assets/css/noscript.css' /></noscript>
+	</head>
+
+	<body lang='en' class="is-loading">
+
+		
+			<div id="wrapper">
+
+                
+<header id="header">
+    <a href='/' class="logo">Jared Hocutt</a>
+</header>
+
+                
+
+<nav id="nav">
+    <ul class="links">
+        <li class="active"><a href='/'>Jared Hocutt</a></li>
+        
+        <li><a href='/#footer'>Contact</a></li>
+        
+        
+    </ul>
+    
+    <ul class="icons">
+        
+        <li><a href="https://twitter.com/jaredhocutt" class="icon fa-twitter"><span class="label">Twitter</span></a></li>
+        
+        
+        
+        <li><a href="https://www.instagram.com/jaredhocutt/" class="icon fa-instagram"><span class="label">Instagram</span></a></li>
+        
+        
+        <li><a href="https://www.linkedin.com/in/jaredhocutt/" class="icon fa-linkedin"><span class="label">LinkedIn</span></a></li>
+        
+        
+        <li><a href="https://github.com/jaredhocutt" class="icon fa-github"><span class="label">GitHub</span></a></li>
+        
+        
+        
+        
+        
+    </ul>
+    
+</nav>
+
+
+				
+					<div id="main">
+
+						
+                        <section class="post">
+                            <header class="major">
+                                
+                                <span class="date">April 11, 2016</span>
+                                
+                                <h1>NetApp Persistent Storage in Kubernetes: Using ONTAP and NFS</h1>
+                                <p></p>
+                            </header>
+                            
+                            <div class="image main"><img src="/images/b-netapp-persistent-storage-in-kubernetes-using-ontap.jpg" alt="" /></div>
+                            
+                            <blockquote>
+<p>This post is part of a multi-part series on how to use NetApp storage
+platforms to present persistent volumes in Kubernetes. The other posts in this series
+are:</p>
+
+<ul>
+<li><a href="http://jaredhocutt.com/post/netapp-persistent-storage-in-kubernetes-using-ontap-and-nfs/">Part 1: Using ONTAP and NFS</a></li>
+<li><a href="http://jaredhocutt.com/post/netapp-persistent-storage-in-kubernetes-using-ontap-and-iscsi/">Part 2: Using ONTAP and iSCSI</a></li>
+</ul>
+</blockquote>
+
+<p>Kubernetes is an open source project for automating deployment, operations, and
+scaling of containerized applications that came out of Google in June 2014. The
+community around Kubernetes has since exploded and is being adopted as one of
+the leading container deployment solutions.</p>
+
+<p>A problem many run into with using containerized applications is what to do
+with their data. Data written inside of a container is ephemeral and only exist
+for the lifetime of the container it's written in. To solve this problem,
+Kubernetes offers a <code>PersistentVolume</code> subsystem that abstracts the details of
+how storage is provided from how it is consumed.</p>
+
+<p>The Kubernetes <code>PersistentVolume</code> API provides several plugins for integrating
+your storage into Kubernetes for containers to consume. In this post, we'll
+focus on how to use the <strong>NFS</strong> plugin with ONTAP. More specifically, we will
+use a slightly modified version of the <a href="https://github.com/kubernetes/kubernetes/tree/release-1.2/examples/nfs">NFS example</a>
+in the Kubernetes source code.</p>
+
+<p></p>
+
+<h2 id="environment">Environment</h2>
+
+<h3 id="ontap">ONTAP</h3>
+
+<p>For this post, a single node clustered Data ONTAP 8.3 simulator was used. The
+setup and commands used are no different than what would be used in a production
+setup using real hardware.</p>
+
+<h3 id="kubernetes">Kubernetes</h3>
+
+<p>In this setup, Kubernetes 1.2.2 was used in a single master and single node setup
+running on VirtualBox using Vagrant. For tutorials on how to run Kubernetes in
+nearly any configuration and on any platform you can imagine, check out the
+<a href="http://kubernetes.io/docs/getting-started-guides/">Kubernetes Getting Started guides</a>.</p>
+
+<h2 id="setup">Setup</h2>
+
+<h3 id="ontap-1">ONTAP</h3>
+
+<p>The setup for ONTAP consists of the following steps.</p>
+
+<ol>
+<li>Create a Storage Virtual Machine (SVM) to host your NFS volumes</li>
+<li>Enable NFS for the SVM created</li>
+<li>Create a data LIF for Kubernetes to use</li>
+<li>Create an export policy to allow the Kubernetes hosts to connect</li>
+<li>Create an NFS volume for Kubernetes to use</li>
+</ol>
+
+<p>Of course you can skip some of these steps if you already have what you need there.</p>
+
+<p>Here is an example that follows these steps:</p>
+
+<p><strong>Create a Storage Virtual Machine (SVM) to host your NFS volumes</strong></p>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">VSIM::&gt; vserver create -vserver svm_kube_nfs -subtype default -rootvolume svm_kube_nfs_root -aggregate aggr1 -rootvolume-security-style unix -language C.UTF-8 -snapshot-policy default
+
+VSIM::&gt; vserver modify -vserver svm_kube_nfs -aggr-list aggr1</code></pre></div>
+
+<p><strong>Enable NFS for the SVM created</strong></p>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">VSIM::&gt; vserver nfs create -vserver svm_kube_nfs -v3 disabled -v4.0 enabled -mount-rootonly disabled</code></pre></div>
+
+<p><strong>Create a data LIF for Kubernetes to use</strong></p>
+
+<p>The values specified in this example is specific to our ONTAP simulator. Update
+the appropriate values to match your environment.</p>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">VSIM::&gt; network interface create -vserver svm_kube_nfs -lif nfs_data -role data -data-protocol nfs -home-node VSIM-01 -home-port e0c -address <span style="color:#ae81ff">10</span>.0.207.10 -netmask <span style="color:#ae81ff">255</span>.255.255.0</code></pre></div>
+
+<p><strong>Create an export policy to allow the Kubernetes hosts to connect</strong></p>
+
+<p>In this case, we are allowing any host to connect by specifying <code>0.0.0.0/0</code> for
+<code>clientmatch</code>. It's unlikely you'd want to do this in production and should
+instead set the value to match the IP range of your Kubernetes hosts.</p>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">VSIM::&gt; protocol export-policy rule create -vserver svm_kube_nfs -policyname default -protocol nfs4 -clientmatch <span style="color:#ae81ff">0</span>.0.0.0/0 -rorule any -rwrule any</code></pre></div>
+
+<p><strong>Create an NFS volume for Kubernetes to use</strong></p>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">VSIM::&gt; volume create -volume kube_nfs_0001 -junction-path /kube_nfs_0001 -vserver svm_kube_nfs -aggregate aggr1 -size 1GB -type RW -unix-permissions ---rwxrwxrwx</code></pre></div>
+
+<h3 id="kubernetes-1">Kubernetes</h3>
+
+<p>Now that we have an NFS volume, we need to let Kubernetes know about it. To do
+this, we will create a <code>PersistentVolume</code> and a <code>PersistentVolumeClaim</code>.</p>
+
+<p>Create a <code>PersistentVolume</code> definition and save it as <code>nfs-pv.yaml</code>.</p>
+
+<p><strong>nfs-pv.yaml</strong></p>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-yaml" data-lang="yaml">apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: kube_nfs_0001
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteMany
+  nfs:
+    server: <span style="color:#ae81ff">10.0</span>.<span style="color:#ae81ff">207.10</span>  <span style="color:#75715e"># set this to your data LIF IP address</span>
+    path: <span style="color:#e6db74">&#34;/kube_nfs_0001&#34;</span></code></pre></div>
+
+<p>Then create a <code>PersistentVolumeClaim</code> that uses the <code>PersistentVolume</code> and save
+it as <code>nfs-pvc.yaml</code>.</p>
+
+<p><strong>nfs-pvc.yaml</strong></p>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-yaml" data-lang="yaml">kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: nfs-claim1
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi</code></pre></div>
+
+<p>Now that we have a <code>PersistentVolume</code> definition and a <code>PersistentVolumeClaim</code>
+definition, we need to create them in Kubernetes.</p>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">$ kubectl create -f nfs-pv.yaml
+$ kubectl create -f nfs-pvc.yaml</code></pre></div>
+
+<p>At this point, we can spin up a container that uses the <code>PersistentVolumeClaim</code>
+we just created. To show this in action, we'll continue using the
+<a href="https://github.com/kubernetes/kubernetes/tree/release-1.2/examples/nfs">NFS example</a> from the Kubernetes source code.</p>
+
+<p>First, we'll setup a &quot;fake&quot; backend that updates an <code>index.html</code> file every 5
+to 10 seconds with the current time and hostname of the pod doing the update.</p>
+
+<p>Save the &quot;fake&quot; backend as <code>nfs-busybox-rc.yaml</code>.</p>
+
+<p><strong>nfs-busybox-rc.yaml</strong></p>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-yaml" data-lang="yaml"><span style="color:#75715e"># This mounts the nfs volume claim into /mnt and continuously</span>
+<span style="color:#75715e"># overwrites /mnt/index.html with the time and hostname of the pod.</span>
+
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: nfs-busybox
+spec:
+  replicas: <span style="color:#ae81ff">2</span>
+  selector:
+    name: nfs-busybox
+  template:
+    metadata:
+      labels:
+        name: nfs-busybox
+    spec:
+      containers:
+      - image: busybox
+        command:
+          - sh
+          - -c
+          - <span style="color:#e6db74">&#39;while true; do date &gt; /mnt/index.html; hostname &gt;&gt; /mnt/index.html; sleep $(($RANDOM % 5 + 5)); done&#39;</span>
+        imagePullPolicy: IfNotPresent
+        name: busybox
+        volumeMounts:
+          <span style="color:#75715e"># name must match the volume name below</span>
+          - name: nfs-claim1
+            mountPath: <span style="color:#e6db74">&#34;/mnt&#34;</span>
+      volumes:
+      - name: nfs-claim1
+        persistentVolumeClaim:
+          claimName: nfs-claim1</code></pre></div>
+
+<p>Create the &quot;fake&quot; backend in Kubernetes.</p>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">$ kubectl create -f nfs-busybox-rc.yaml</code></pre></div>
+
+<p>Next, we'll create a web server that also uses the NFS mount to serve the
+<code>index.html</code> file being generated by the &quot;fake&quot; backend.</p>
+
+<p>The web server consists of a pod definition and a service definition.</p>
+
+<p>Save the pod definition as <code>nfs-web-rc.yaml</code>.</p>
+
+<p><strong>nfs-web-rc.yaml</strong></p>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-yaml" data-lang="yaml"><span style="color:#75715e"># This pod mounts the nfs volume claim into /usr/share/nginx/html and</span>
+<span style="color:#75715e"># serves a simple web page.</span>
+
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: nfs-web
+spec:
+  replicas: <span style="color:#ae81ff">2</span>
+  selector:
+    role: web-frontend
+  template:
+    metadata:
+      labels:
+        role: web-frontend
+    spec:
+      containers:
+      - name: web
+        image: nginx
+        ports:
+          - name: web
+            containerPort: <span style="color:#ae81ff">80</span>
+        volumeMounts:
+            <span style="color:#75715e"># name must match the volume name below</span>
+            - name: nfs-claim1
+              mountPath: <span style="color:#e6db74">&#34;/usr/share/nginx/html&#34;</span>
+      volumes:
+      - name: nfs-claim1
+        persistentVolumeClaim:
+          claimName: nfs-claim1</code></pre></div>
+
+<p>Save the service definition as <code>nfs-web-service.yaml</code>.</p>
+
+<p><strong>nfs-web-service.yaml</strong></p>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-yaml" data-lang="yaml">kind: Service
+apiVersion: v1
+metadata:
+  name: nfs-web
+spec:
+  ports:
+    - port: <span style="color:#ae81ff">80</span>
+  selector:
+    role: web-frontend</code></pre></div>
+
+<p>Create the web server in Kubernetes.</p>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">$ kubectl create -f nfs-web-rc.yaml
+$ kubectl create -f nfs-web-service.yaml</code></pre></div>
+
+<p>Now that everything is setup and running, we can verify that it is working as
+expected. Using the busybox container we launched earlier, we can make a request
+to <code>nginx</code> to check that the data is being served properly.</p>
+
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">$ kubectl get pod -lname<span style="color:#f92672">=</span>nfs-busybox
+NAME                READY     STATUS    RESTARTS   AGE
+nfs-busybox-1u136   <span style="color:#ae81ff">1</span>/1       Running   <span style="color:#ae81ff">0</span>          1m
+nfs-busybox-gaqxs   <span style="color:#ae81ff">1</span>/1       Running   <span style="color:#ae81ff">0</span>          1m
+
+$ kubectl get services nfs-web
+NAME      CLUSTER-IP      EXTERNAL-IP   PORT<span style="color:#f92672">(</span>S<span style="color:#f92672">)</span>   AGE
+nfs-web   <span style="color:#ae81ff">10</span>.247.85.128   &lt;none&gt;        <span style="color:#ae81ff">80</span>/TCP    45s
+
+$ kubectl exec nfs-busybox-1u136 -- wget -qO- http://10.247.85.128
+Tue Apr <span style="color:#ae81ff">12</span> <span style="color:#ae81ff">19</span>:56:18 UTC <span style="color:#ae81ff">2016</span>
+nfs-busybox-gaqxs</code></pre></div>
+
+<p>As can be seen in this example, when we made a request to <code>nginx</code>, the last pod
+to have updated the <code>index.html</code> file was <code>nfs-busybox-gaqxs</code> at
+<code>Tue Apr 12 19:56:18 UTC 2016</code>. We can continue to make a request to <code>nginx</code>
+and watch this data get updated every 5-10 seconds.</p>
+
+                            
+                            
+                            
+                            
+                            
+                        </section>
+
+					</div>
+
+                    
+
+<footer id="footer">
+    
+    <section>
+        <form method="post" action="https://formspree.io/contact@jaredhocutt.com">
+            <div class="field">
+                <label for="name">Name</label>
+                <input type="text" name="name" id="name" />
+            </div>
+            <div class="field">
+                <label for="email">Email</label>
+                <input type="text" name="email" id="email" />
+            </div>
+            <div class="field">
+                <label for="message">Message</label>
+                <textarea name="message" id="message" rows="3"></textarea>
+            </div>
+            <ul class="actions">
+                <li><input type="submit" value='Send A Message' /></li>
+            </ul>
+        </form>
+    </section>
+    
+    <section class="split contact">
+        
+        
+        
+        
+        <section>
+            <h3>Social</h3>
+            <ul class="icons alt">
+                
+                <li><a href="https://twitter.com/jaredhocutt" class="icon alt fa-twitter"><span class="label">Twitter</span></a></li>
+                
+                
+                
+                <li><a href="https://www.instagram.com/jaredhocutt/" class="icon alt fa-instagram"><span class="label">Instagram</span></a></li>
+                
+                
+                <li><a href="https://www.linkedin.com/in/jaredhocutt/" class="icon alt fa-linkedin"><span class="label">LinkedIn</span></a></li>
+                
+                
+                <li><a href="https://github.com/jaredhocutt" class="icon alt fa-github"><span class="label">GitHub</span></a></li>
+                
+                
+                
+                
+                
+            </ul>
+        </section>
+        
+    </section>
+</footer>
+
+                    
+<div id="copyright">
+    <ul><li>&copy; Jared Hocutt</li><li>Design: <a href="https://html5up.net">HTML5 UP</a></li><li>Hugo Port: <a href="https://curtistimson.co.uk">curttimson</a></li></ul>
+</div>
+
+
+            </div>
+            
+            
+<script src='/assets/js/jquery.min.js'></script>
+<script src='/assets/js/jquery.scrollex.min.js'></script>
+<script src='/assets/js/jquery.scrolly.min.js'></script>
+<script src='/assets/js/skel.min.js'></script>
+<script src='/assets/js/util.js'></script>
+<script src='/assets/js/main.js'></script>
+
+
+	</body>
+</html>

@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Posts on Jared Hocutt</title>
+    <link>http://jaredhocutt.com/post/</link>
+    <description>Recent content in Posts on Jared Hocutt</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>en-us</language>
+    <lastBuildDate>Wed, 13 Apr 2016 00:00:00 +0000</lastBuildDate>
+    
+	<atom:link href="http://jaredhocutt.com/post/index.xml" rel="self" type="application/rss+xml" />
+    
+    
+    <item>
+      <title>NetApp Persistent Storage in Kubernetes: Using ONTAP and iSCSI</title>
+      <link>http://jaredhocutt.com/post/netapp-persistent-storage-in-kubernetes-using-ontap-and-iscsi/</link>
+      <pubDate>Wed, 13 Apr 2016 00:00:00 +0000</pubDate>
+      
+      <guid>http://jaredhocutt.com/post/netapp-persistent-storage-in-kubernetes-using-ontap-and-iscsi/</guid>
+      <description>&lt;blockquote&gt;
+&lt;p&gt;This post is part of a multi-part series on how to use NetApp storage
+platforms to present persistent volumes in Kubernetes. The other posts in this series
+are:&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;http://jaredhocutt.com/post/netapp-persistent-storage-in-kubernetes-using-ontap-and-nfs/&#34;&gt;Part 1: Using ONTAP and NFS&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;http://jaredhocutt.com/post/netapp-persistent-storage-in-kubernetes-using-ontap-and-iscsi/&#34;&gt;Part 2: Using ONTAP and iSCSI&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;The Kubernetes &lt;code&gt;PersistentVolume&lt;/code&gt; API provides several plugins for integrating
+your storage into Kubernetes for containers to consume. In this post, we&#39;ll
+focus on how to use the &lt;strong&gt;iSCSI&lt;/strong&gt; plugin with ONTAP.&lt;/p&gt;
+
+&lt;p&gt;&lt;/p&gt;</description>
+    </item>
+    
+    <item>
+      <title>NetApp Persistent Storage in Kubernetes: Using ONTAP and NFS</title>
+      <link>http://jaredhocutt.com/post/netapp-persistent-storage-in-kubernetes-using-ontap-and-nfs/</link>
+      <pubDate>Mon, 11 Apr 2016 00:00:00 +0000</pubDate>
+      
+      <guid>http://jaredhocutt.com/post/netapp-persistent-storage-in-kubernetes-using-ontap-and-nfs/</guid>
+      <description>&lt;blockquote&gt;
+&lt;p&gt;This post is part of a multi-part series on how to use NetApp storage
+platforms to present persistent volumes in Kubernetes. The other posts in this series
+are:&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;http://jaredhocutt.com/post/netapp-persistent-storage-in-kubernetes-using-ontap-and-nfs/&#34;&gt;Part 1: Using ONTAP and NFS&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;http://jaredhocutt.com/post/netapp-persistent-storage-in-kubernetes-using-ontap-and-iscsi/&#34;&gt;Part 2: Using ONTAP and iSCSI&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;Kubernetes is an open source project for automating deployment, operations, and
+scaling of containerized applications that came out of Google in June 2014. The
+community around Kubernetes has since exploded and is being adopted as one of
+the leading container deployment solutions.&lt;/p&gt;
+
+&lt;p&gt;A problem many run into with using containerized applications is what to do
+with their data. Data written inside of a container is ephemeral and only exist
+for the lifetime of the container it&#39;s written in. To solve this problem,
+Kubernetes offers a &lt;code&gt;PersistentVolume&lt;/code&gt; subsystem that abstracts the details of
+how storage is provided from how it is consumed.&lt;/p&gt;
+
+&lt;p&gt;The Kubernetes &lt;code&gt;PersistentVolume&lt;/code&gt; API provides several plugins for integrating
+your storage into Kubernetes for containers to consume. In this post, we&#39;ll
+focus on how to use the &lt;strong&gt;NFS&lt;/strong&gt; plugin with ONTAP. More specifically, we will
+use a slightly modified version of the &lt;a href=&#34;https://github.com/kubernetes/kubernetes/tree/release-1.2/examples/nfs&#34;&gt;NFS example&lt;/a&gt;
+in the Kubernetes source code.&lt;/p&gt;
+
+&lt;p&gt;&lt;/p&gt;</description>
+    </item>
+    
+    <item>
+      <title>Change Ubuntu Hostname</title>
+      <link>http://jaredhocutt.com/post/change-ubuntu-hostname/</link>
+      <pubDate>Fri, 05 Nov 2010 00:00:00 +0000</pubDate>
+      
+      <guid>http://jaredhocutt.com/post/change-ubuntu-hostname/</guid>
+      <description>Have you ever set the hostname on your Ubuntu installation only to want to change later? Here is an easy way to accomplish this and only requires changing a single line in a configuration file.
+To begin, open the file /etc/hostname:
+sudo vim /etc/hostname Change the text in that file to what you would like your new hostname to be and reboot your computer. After the computer reboots, you will have a new hostname!</description>
+    </item>
+    
+    <item>
+      <title>Subdomains on localhost using Apache / XAMPP</title>
+      <link>http://jaredhocutt.com/post/subdomains-on-localhost-using-apache-xampp/</link>
+      <pubDate>Tue, 05 Oct 2010 00:00:00 +0000</pubDate>
+      
+      <guid>http://jaredhocutt.com/post/subdomains-on-localhost-using-apache-xampp/</guid>
+      <description>When I&#39;m working on a new project, I often find myself wanting to setup a subdomain (e.g. http://myproject.dev) in my local environment to use while doing development. If you&#39;re using XAMPP (or standalone Apache), this is actually a pretty easy thing to do.
+These instructions should work in both Windows and Linux environments. I&#39;ll attempt to make notes where things differ.
+Step 1 Setting up subdomains requires using a VirtualHost in Apache.</description>
+    </item>
+    
+  </channel>
+</rss>

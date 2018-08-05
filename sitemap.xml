@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+  xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  
+  <url>
+    <loc>http://jaredhocutt.com/post/netapp-persistent-storage-in-kubernetes-using-ontap-and-iscsi/</loc>
+    <lastmod>2016-04-13T00:00:00+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://jaredhocutt.com/post/netapp-persistent-storage-in-kubernetes-using-ontap-and-nfs/</loc>
+    <lastmod>2016-04-11T00:00:00+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://jaredhocutt.com/post/change-ubuntu-hostname/</loc>
+    <lastmod>2010-11-05T00:00:00+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://jaredhocutt.com/post/subdomains-on-localhost-using-apache-xampp/</loc>
+    <lastmod>2010-10-05T00:00:00+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://jaredhocutt.com/categories/</loc>
+    <priority>0</priority>
+  </url>
+  
+  <url>
+    <loc>http://jaredhocutt.com/</loc>
+    <lastmod>2016-04-13T00:00:00+00:00</lastmod>
+    <priority>0</priority>
+  </url>
+  
+  <url>
+    <loc>http://jaredhocutt.com/post/</loc>
+    <lastmod>2016-04-13T00:00:00+00:00</lastmod>
+    <priority>0</priority>
+  </url>
+  
+  <url>
+    <loc>http://jaredhocutt.com/tags/</loc>
+    <priority>0</priority>
+  </url>
+  
+</urlset>
