@@ -14,7 +14,7 @@ canonifyURLs = false
   favicon = "favicon.ico"
 
 [params.posts]
-    foldername = "posts"
+    foldername = "post"
     pagesize = "12"
     featuredpost = "false"
 
